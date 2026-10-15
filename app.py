@@ -186,7 +186,51 @@ if datos_port:
 else:
     st.warning("⚠️ No hay registros. Ejecuta `python calculo.py`")
 
+st.divider()
 
+# ═══════════════════════════════════════════════════════════
+# SECCIÓN 5: GRÁFICOS DE EVOLUCIÓN
+# ═══════════════════════════════════════════════════════════
+st.header("📈 Evolución del NASDAQ y del Portafolio")
+
+cursor.execute("""
+    SELECT fecha, valor_nasdaq, valor_portafolio
+    FROM portafolio_diario
+    ORDER BY fecha ASC
+""")
+datos_evol = cursor.fetchall()
+
+if datos_evol:
+    # Construir DataFrame
+    df_evol = pd.DataFrame(
+        datos_evol,
+        columns=['Fecha', 'NASDAQ', 'Portafolio']
+    )
+
+    # Forzar tipos correctos
+    df_evol['Fecha'] = pd.to_datetime(df_evol['Fecha'])
+    df_evol['NASDAQ'] = pd.to_numeric(df_evol['NASDAQ'], errors='coerce')
+    df_evol['Portafolio'] = pd.to_numeric(df_evol['Portafolio'], errors='coerce')
+
+    # Eliminar filas con NaN (por si acaso)
+    df_evol = df_evol.dropna()
+
+    # Poner fecha como índice
+    df_evol = df_evol.set_index('Fecha')
+    if len(df_evol) > 0:
+        tab1, tab2 = st.tabs(["📈 NASDAQ", "💼 Portafolio"])
+
+        with tab1:
+            st.subheader("Evolución del NASDAQ")
+            st.line_chart(df_evol[['NASDAQ']])
+
+        with tab2:
+            st.subheader("Evolución del Portafolio")
+            st.line_chart(df_evol[['Portafolio']])
+    else:
+        st.warning("⚠️ Los datos existen pero no son válidos para graficar.")
+else:
+    st.warning("⚠️ No hay datos de evolución. Ejecuta `python actualizar.py` y `python calculo.py`.") 
 cursor.close()
 conn.close()
 
