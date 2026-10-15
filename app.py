@@ -13,7 +13,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-
 # ═══════════════════════════════════════════════════════════
 # ESTILOS PERSONALIZADOS
 # ═══════════════════════════════════════════════════════════
@@ -55,8 +54,8 @@ with col_logo:
     st.markdown("# 🏦")
 
 with col_title:
-    st.title("RiTech Decision Assistant")
-    st.caption("Panel de Control · Sprint 2 · Seguimiento del portafolio basado en el NASDAQ")
+    st.title("Asistente de Decisiones RiTech")
+    st.caption("Panel de Control · Sprint 3 · Seguimiento del portafolio basado en el NASDAQ")
 
 st.divider()
 
