@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from db import conectar
+from alertas import obtener_alertas 
 
 
 # ═══════════════════════════════════════════════════════════
@@ -242,6 +243,47 @@ else:
 
 st.divider()
 
+# ═══════════════════════════════════════════════════════════
+# NUEVO - ALERTAS DE UMBRALES DE PÉRDIDA Y GANANCIA
+# ═══════════════════════════════════════════════════════════
+st.header("🚨 Alertas de umbrales")
+st.caption("Comprueba si el portafolio llegó a los umbrales de pérdida o ganancia configurados.")
+
+if st.button("🔍 Revisar alertas", type="primary"):
+    info = obtener_alertas(cursor)
+
+    if info is None:
+        st.warning(
+            "⚠️ Aún no hay datos del portafolio. Guarda la configuración y ejecuta "
+            "`python actualizar.py` y luego `python calculo.py`."
+        )
+    else:
+        st.caption(f"Evaluado con el último día registrado: {info['fecha']}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Variación del último día", f"{info['variacion_dia']:+.2f}%")
+        with col2:
+            st.metric("Rentabilidad acumulada", f"{info['rentabilidad']:+.2f}%")
+
+        st.caption(
+            f"Umbrales configurados: pérdida {info['umbral_perdida']:.2f}% · "
+            f"ganancia +{info['umbral_ganancia']:.2f}%"
+        )
+
+        if not info["alertas"]:
+            st.info("✅ Sin alertas: el portafolio está dentro de los umbrales.")
+
+        for alerta in info["alertas"]:
+            if alerta["tipo"] == "perdida":
+                st.error("🔴 ALERTA DE PÉRDIDA — " + alerta["mensaje"])
+            else:
+                st.success("🟢 ALERTA DE GANANCIA — " + alerta["mensaje"])
+else:
+    st.info("Pulsa «Revisar alertas» para comprobar si hay pérdidas o ganancias que superen los umbrales.")
+
+
+st.divider()
 
 # ═══════════════════════════════════════════════════════════
 # TABLAS DETALLADAS
