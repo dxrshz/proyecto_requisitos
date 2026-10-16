@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from db import conectar
 from alertas import obtener_alertas 
-
+from recomendaciones import obtener_recomendacion
 
 # ═══════════════════════════════════════════════════════════
 # CONFIGURACIÓN DE PÁGINA
@@ -284,6 +284,34 @@ else:
 
 
 st.divider()
+
+# ═══════════════════════════════════════════════════════════
+# Parte Juan Cordoba Mi Colega (Recomendaciones de inversión y simulador)
+# ═══════════════════════════════════════════════════════════
+st.header("🧭 Recomendaciones de inversión")
+
+rec = obtener_recomendacion(cursor)
+if rec is None:
+    st.warning("⚠️ Se necesitan al menos 12 días de histórico.")
+else:
+    if "AUMENTAR" in rec["accion"]:
+        st.success(f"🟢 **{rec['accion']}** — {rec['detalle']}")
+    elif "REDUCIR" in rec["accion"] or "UTILIDADES" in rec["accion"]:
+        st.error(f"🔴 **{rec['accion']}** — {rec['detalle']}")
+    else:
+        st.info(f"🟡 **{rec['accion']}** — {rec['detalle']}")
+
+    with st.expander("Ver el análisis detrás de la recomendación"):
+        for nombre, punt, texto in rec["señales"]:
+            icono = "🟢" if punt > 0 else "🔴" if punt < 0 else "⚪"
+            st.write(f"{icono} **{nombre}**: {texto}")
+
+    st.subheader("🎲 Simulador de escenarios")
+    df_esc = pd.DataFrame(rec["escenarios"])
+    st.dataframe(df_esc.style.format("{:+.2f}%"), hide_index=True)
+
+    st.caption("⚠️ Herramienta de apoyo. No constituye asesoría financiera.")
+
 
 # ═══════════════════════════════════════════════════════════
 # TABLAS DETALLADAS
