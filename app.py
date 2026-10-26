@@ -38,28 +38,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-# ═══════════════════════════════════════════════════════════
-# BOTÓN: ACTUALIZAR DATOS CON UN CLIC
-# ═══════════════════════════════════════════════════════════
-with st.sidebar:
-    st.header("🔄 Datos")
-    if st.button("Actualizar datos ahora", type="primary", use_container_width=True):
-        with st.spinner("Descargando NASDAQ y recalculando portafolio..."):
-            try:
-                res = ejecutar_pipeline()
-                st.session_state["msg_update"] = (
-                    "ok",
-                    f"Datos al día hasta {res['ultima_fecha']} "
-                    f"({res['dias_calculados']} días calculados).",
-                )
-            except Exception as e:
-                st.session_state["msg_update"] = ("error", str(e))
-        st.rerun()
-
-    if "msg_update" in st.session_state:
-        tipo, texto = st.session_state.pop("msg_update")
-        (st.success if tipo == "ok" else st.error)(texto)
-    st.divider()
 
 # ═══════════════════════════════════════════════════════════
 # CONEXIÓN A BD
@@ -161,9 +139,30 @@ with st.sidebar:
 
         conn.commit()
         st.rerun()
+# ═══════════════════════════════════════════════════════════
+# BOTÓN: ACTUALIZAR DATOS CON UN CLIC
+# ═══════════════════════════════════════════════════════════
+with st.sidebar:
+    st.header("🔄 Datos")
+    if st.button("Actualizar datos ahora", type="primary", use_container_width=True):
+        with st.spinner("Descargando NASDAQ y recalculando portafolio..."):
+            try:
+                res = ejecutar_pipeline()
+                st.session_state["msg_update"] = (
+                    "ok",
+                    f"Datos al día hasta {res['ultima_fecha']} "
+                    f"({res['dias_calculados']} días calculados).",
+                )
+            except Exception as e:
+                st.session_state["msg_update"] = ("error", str(e))
+        st.rerun()
+
+    if "msg_update" in st.session_state:
+        tipo, texto = st.session_state.pop("msg_update")
+        (st.success if tipo == "ok" else st.error)(texto)
 
     st.divider()
-    st.caption(f"© 2026 RiTech SAS")
+    st.caption(f"Sprint 3")
 
 
 # ═══════════════════════════════════════════════════════════
