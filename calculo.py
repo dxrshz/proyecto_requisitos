@@ -1,87 +1,74 @@
+"""
+calculo.py
+----------
+Recalcula la tabla portafolio_diario a partir de historico_nasdaq.
+
+Regla de negocio: el portafolio sube 2x lo que sube el NASDAQ
+y baja 1.25x lo que baja.
+"""
 from db import conectar
 
+FACTOR_SUBIDA = 2.0
+FACTOR_BAJADA = 1.25
 
-def calcular_portafolio():
-    print("🚀 Calculando portafolio...\n")
-    
+
+def variacion_portafolio(var_nasdaq):
+    """Aplica la regla de negocio. Reutilizable desde recomendaciones.py."""
+    return var_nasdaq * (FACTOR_SUBIDA if var_nasdaq > 0 else FACTOR_BAJADA)
+
+
+def calcular_portafolio(verbose=False):
+    """Borra y recalcula portafolio_diario en UNA transaccion: si algo falla
+    no se pierden los datos anteriores. Devuelve un resumen (dict)."""
     conn = conectar()
-    cursor = conn.cursor()
-    
-    # 1. Capital inicial desde configuracion (lo pone la app)
-    cursor.execute("SELECT capital_inicial FROM configuracion ORDER BY id LIMIT 1")
-    resultado = cursor.fetchone()
-    
-    if resultado is None:
-        print("⚠️ No hay configuración guardada.")
-        print("   Abre la app (streamlit run app.py) y configura el capital primero.")
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT capital_inicial FROM configuracion ORDER BY id LIMIT 1")
+                fila = cur.fetchone()
+                if fila is None:
+                    raise RuntimeError(
+                        "No hay configuracion guardada. Abre la app y guarda el "
+                        "capital inicial en la barra lateral."
+                    )
+                capital = float(fila[0])
+
+                cur.execute("SELECT fecha, valor_cierre FROM historico_nasdaq ORDER BY fecha ASC")
+                datos = cur.fetchall()
+                if len(datos) < 2:
+                    raise RuntimeError("Se necesitan al menos 2 dias de datos del NASDAQ.")
+
+                filas, valor, anterior = [], capital, None
+                for fecha, cierre in datos:
+                    cierre = float(cierre)
+                    if anterior is None:
+                        var_n = var_p = ganancia = 0.0
+                    else:
+                        var_n = (cierre - anterior) / anterior * 100
+                        var_p = variacion_portafolio(var_n)
+                        valor *= 1 + var_p / 100
+                        ganancia = valor - capital
+                    filas.append((fecha, cierre, round(var_n, 4), round(valor, 2),
+                                  round(var_p, 4), round(ganancia, 2)))
+                    anterior = cierre
+
+                cur.execute("DELETE FROM portafolio_diario")
+                cur.executemany("""
+                    INSERT INTO portafolio_diario
+                        (fecha, valor_nasdaq, variacion_nasdaq,
+                         valor_portafolio, variacion_portafolio, ganancia_perdida)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, filas)
+    finally:
         conn.close()
-        return
-    
-    capital = float(resultado[0])
-    print(f"💰 Capital inicial: ${capital:,.2f}\n")
-    
-    # 2. Datos del NASDAQ
-    cursor.execute("""
-        SELECT fecha, valor_cierre 
-        FROM historico_nasdaq 
-        ORDER BY fecha ASC
-    """)
-    datos = cursor.fetchall()
-    
-    if len(datos) < 2:
-        print("⚠️ Se necesitan al menos 2 días de datos")
-        conn.close()
-        return
-    
-    # 3. Limpiar cálculos anteriores
-    cursor.execute("DELETE FROM portafolio_diario")
-    
-    # 4. Calcular día a día
-    valor_portafolio = capital
-    cierre_anterior = None
-    
-    for fecha, cierre in datos:
-        cierre = float(cierre)
-        
-        if cierre_anterior is None:
-            variacion_nasdaq = 0
-            variacion_portafolio = 0
-            ganancia = 0
-        else:
-            variacion_nasdaq = ((cierre - cierre_anterior) / cierre_anterior) * 100
-            
-            # REGLA DE NEGOCIO
-            if variacion_nasdaq > 0:
-                variacion_portafolio = variacion_nasdaq * 2
-            else:
-                variacion_portafolio = variacion_nasdaq * 1.25
-            
-            valor_portafolio = valor_portafolio * (1 + variacion_portafolio / 100)
-            ganancia = valor_portafolio - capital
-        
-        cursor.execute("""
-            INSERT INTO portafolio_diario 
-                (fecha, valor_nasdaq, variacion_nasdaq, 
-                 valor_portafolio, variacion_portafolio, ganancia_perdida)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (
-            fecha,
-            cierre,
-            round(variacion_nasdaq, 4),
-            round(valor_portafolio, 2),
-            round(variacion_portafolio, 4),
-            round(ganancia, 2)
-        ))
-        
-        cierre_anterior = cierre
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    
-    print(f"✅ Portafolio calculado para {len(datos)} días")
-    print("\n🎉 Cálculo completado")
+
+    if verbose:
+        print(f"Portafolio calculado para {len(filas)} dias (capital ${capital:,.2f})")
+    return {"dias_calculados": len(filas), "ultima_fecha": str(filas[-1][0]), "capital": capital}
 
 
 if __name__ == "__main__":
-    calcular_portafolio()
+    try:
+        calcular_portafolio(verbose=True)
+    except Exception as e:
+        print(f"ERROR: {e}")
