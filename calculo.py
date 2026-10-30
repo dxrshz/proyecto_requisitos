@@ -1,15 +1,7 @@
-"""
-calculo.py
-----------
-Recalcula la tabla portafolio_diario a partir de historico_nasdaq.
-
-Regla de negocio: el portafolio sube 2x lo que sube el NASDAQ
-y baja 1.25x lo que baja.
-"""
 from db import conectar
 
 FACTOR_SUBIDA = 2.0
-FACTOR_BAJADA = 1.25
+FACTOR_BAJADA = 2.0
 
 
 def variacion_portafolio(var_nasdaq):
