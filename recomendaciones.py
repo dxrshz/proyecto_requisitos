@@ -1,8 +1,7 @@
 import pandas as pd
 
 def impacto_portafolio(var_nasdaq):
-    """+2% NASDAQ -> +4%; -2% NASDAQ -> -2.5%"""
-    return var_nasdaq * 2 if var_nasdaq >= 0 else var_nasdaq * 1.25
+    return var_nasdaq * 2 if var_nasdaq >= 0 else var_nasdaq * 2
 
 
 def _rsi(cierres, periodo=14):
