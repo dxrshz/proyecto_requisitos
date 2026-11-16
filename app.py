@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 from db import conectar
-from alertas import obtener_alertas 
+from alertas import obtener_alertas
 from recomendaciones import obtener_recomendacion
 from actualizar import ejecutar_pipeline
 
-# ═══════════════════════════════════════════════════════════
-# CONFIGURACIÓN DE PÁGINA
-# ═══════════════════════════════════════════════════════════
+### ═══════════════════════════════════════════════════════════
+### CONFIGURACIÓN DE PÁGINA
+### ═══════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Asistente de Decisiones RiTech",
     page_icon="🏦",
@@ -15,29 +15,74 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ═══════════════════════════════════════════════════════════
-# ESTILOS PERSONALIZADOS
-# ═══════════════════════════════════════════════════════════
-st.markdown("""
+### ═══════════════════════════════════════════════════════════
+### SELECTOR DE TEMA Y ESTILOS PERSONALIZADOS
+### ═══════════════════════════════════════════════════════════
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    modo_oscuro = st.toggle("🌙 Modo Oscuro", value=True)
+    st.caption("Ajusta los parámetros del portafolio")
+
+if modo_oscuro:
+    tema_css = """
     <style>
-    /* Métricas más grandes */
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem;
-    }
-    /* Separadores más sutiles */
-    hr {
-        margin: 1.5rem 0;
-    }
-    /* Títulos */
-    h1 {
-        padding-bottom: 0.5rem;
-    }
-    /* Tablas */
-    [data-testid="stDataFrame"] {
-        border-radius: 8px;
-    }
+        .stApp { background-color: #0E1117; color: #FAFAFA; }
+        [data-testid="stSidebar"] { background-color: #161B22; }
+        [data-testid="stMetric"] {
+            background-color: #1F242D;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #30363D;
+        }
+        [data-testid="stMetricValue"] { font-size: 1.8rem; color: #FAFAFA; }
+        [data-testid="stMetricLabel"] { color: #8B949E; }
+        hr { margin: 1.5rem 0; border-color: #30363D; }
+        h1, h2, h3 { color: #FAFAFA; padding-bottom: 0.5rem; }
+        [data-testid="stDataFrame"] { border-radius: 8px; }
     </style>
-""", unsafe_allow_html=True)
+    """
+else:
+    tema_css = """
+    <style>
+        /* Fondo principal y barra superior */
+        .stApp, [data-testid="stHeader"] {
+            background-color: #FFFFFF;
+            color: #1F2328;
+        }
+        /* Barra lateral */
+        [data-testid="stSidebar"] {
+            background-color: #F6F8FA;
+        }
+        /* Forzar texto oscuro en párrafos, captions, etiquetas y encabezados */
+        .stApp p, .stApp span, .stApp label, .stApp li,
+        [data-testid="stCaptionContainer"],
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stExpander"] summary span,
+        h1, h2, h3, h4 {
+            color: #1F2328 !important;
+        }
+        /* Tarjetas de métricas */
+        [data-testid="stMetric"] {
+            background-color: #F6F8FA;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #D0D7DE;
+        }
+        [data-testid="stMetricValue"] { font-size: 1.8rem; color: #1F2328 !important; }
+        [data-testid="stMetricLabel"] p { color: #57606A !important; }
+        /* Pestañas (Tabs) */
+        button[data-baseweb="tab"] p {
+            color: #1F2328 !important;
+        }
+        /* Cajas de alerta (st.info, st.warning, etc.) */
+        [data-testid="stAlert"] p {
+            color: #1F2328 !important;
+        }
+        hr { margin: 1.5rem 0; border-color: #D0D7DE; }
+        [data-testid="stDataFrame"] { border-radius: 8px; }
+    </style>
+    """
+st.markdown(tema_css, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════
 # CONEXIÓN A BD
@@ -138,6 +183,7 @@ with st.sidebar:
             st.success("✅ Configuración actualizada")
 
         conn.commit()
+        st.session_state.pop("ultima_alerta_toast", None)
         st.rerun()
 # ═══════════════════════════════════════════════════════════
 # BOTÓN: ACTUALIZAR DATOS CON UN CLIC
@@ -155,6 +201,7 @@ with st.sidebar:
                 )
             except Exception as e:
                 st.session_state["msg_update"] = ("error", str(e))
+        st.session_state.pop("ultima_alerta_toast", None)
         st.rerun()
 
     if "msg_update" in st.session_state:
@@ -306,21 +353,65 @@ else:
 
 st.divider()
 
-# ═══════════════════════════════════════════════════════════
-# Parte Juan Cordoba Mi Colega (Recomendaciones de inversión y simulador)
-# ═══════════════════════════════════════════════════════════
+### ═══════════════════════════════════════════════════════════
+### Parte Juan Cordoba Mi Colega (Recomendaciones de inversión y simulador)
+### ═══════════════════════════════════════════════════════════
 st.header("🧭 Recomendaciones de inversión")
-
 rec = obtener_recomendacion(cursor)
+
 if rec is None:
     st.warning("⚠️ Se necesitan al menos 12 días de histórico.")
 else:
+    # Detectar si se tocaron los umbrales configurados según la lógica de recomendaciones.py
+    toco_ganancia = rec["accion"] == "TOMAR UTILIDADES"
+    toco_perdida = "umbral de pérdida" in rec["detalle"]
+
+    # Banners fijos en pantalla
     if "AUMENTAR" in rec["accion"]:
-        st.success(f"🟢 **{rec['accion']}** — {rec['detalle']}")
-    elif "REDUCIR" in rec["accion"] or "UTILIDADES" in rec["accion"]:
-        st.error(f"🔴 **{rec['accion']}** — {rec['detalle']}")
+        st.success(f"🟢  **{rec['accion']}**  — {rec['detalle']}")
+    elif "REDUCIR" in rec["accion"] or toco_ganancia:
+        st.error(f"🔴  **{rec['accion']}**  — {rec['detalle']}")
     else:
-        st.info(f"🟡 **{rec['accion']}** — {rec['detalle']}")
+        st.info(f"🟡  **{rec['accion']}**  — {rec['detalle']}")
+
+    # Notificación flotante en la esquina superior derecha (st.toast)
+    # Se usa st.session_state para evitar que salte repetidamente al cambiar de tema o abrir expanders
+    estado_alerta = f"{rec['accion']}_{rec['rentabilidad']:.2f}"
+    if st.session_state.get("ultima_alerta_toast") != estado_alerta:
+            if toco_ganancia or toco_perdida:
+                color_borde = "#2ea043" if toco_ganancia else "#f85149"
+                icono = "🟢 🚀" if toco_ganancia else "🔴 ⚠️"
+                titulo = "¡Umbral de ganancia alcanzado!" if toco_ganancia else "¡Alerta de umbral de pérdida!"
+
+                st.markdown(f"""
+                <style>
+                @keyframes fadeOutToast {{
+                    0%   {{ opacity: 1; transform: translateY(0); }}
+                    85%  {{ opacity: 1; transform: translateY(0); }}
+                    100% {{ opacity: 0; transform: translateY(-20px); visibility: hidden; }}
+                }}
+                .custom-toast {{
+                    position: fixed;
+                    top: 60px;
+                    right: 25px;
+                    z-index: 999999;
+                    background-color: #1F242D;
+                    color: #FAFAFA !important;
+                    border-left: 6px solid {color_borde};
+                    padding: 16px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+                    max-width: 380px;
+                    font-size: 0.95rem;
+                    animation: fadeOutToast 10s forwards; /* <-- Cambia 10s por los segundos que quieras */
+                }}
+                </style>
+                <div class="custom-toast">
+                    <strong>{icono} {titulo}</strong><br>
+                    <span style="color: #E6EDF3 !important; font-size: 0.88rem;">{rec['detalle']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                st.session_state["ultima_alerta_toast"] = estado_alerta
 
     with st.expander("Ver el análisis detrás de la recomendación"):
         for nombre, punt, texto in rec["señales"]:
@@ -332,7 +423,6 @@ else:
     st.dataframe(df_esc.style.format("{:+.2f}%"), hide_index=True)
 
     st.caption("⚠️ Herramienta de apoyo. No constituye asesoría financiera.")
-
 
 # ═══════════════════════════════════════════════════════════
 # TABLAS DETALLADAS
