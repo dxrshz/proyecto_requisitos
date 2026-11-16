@@ -8,15 +8,12 @@ def variacion_portafolio(var_nasdaq):
     """Aplica la regla de negocio. Reutilizable desde recomendaciones.py."""
     return var_nasdaq * (FACTOR_SUBIDA if var_nasdaq > 0 else FACTOR_BAJADA)
 
-
 def calcular_portafolio(verbose=False):
-    """Borra y recalcula portafolio_diario en UNA transaccion: si algo falla
-    no se pierden los datos anteriores. Devuelve un resumen (dict)."""
     conn = conectar()
     try:
         with conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT capital_inicial FROM configuracion ORDER BY id LIMIT 1")
+                cur.execute("SELECT capital_inicial, fecha_inicio FROM configuracion ORDER BY id LIMIT 1")
                 fila = cur.fetchone()
                 if fila is None:
                     raise RuntimeError(
@@ -24,11 +21,19 @@ def calcular_portafolio(verbose=False):
                         "capital inicial en la barra lateral."
                     )
                 capital = float(fila[0])
+                fecha_inicio = fila[1]
 
-                cur.execute("SELECT fecha, valor_cierre FROM historico_nasdaq ORDER BY fecha ASC")
+                if fecha_inicio:
+                    cur.execute(
+                        "SELECT fecha, valor_cierre FROM historico_nasdaq WHERE fecha >= %s ORDER BY fecha ASC",
+                        (fecha_inicio,)
+                    )
+                else:
+                    cur.execute("SELECT fecha, valor_cierre FROM historico_nasdaq ORDER BY fecha ASC")
+
                 datos = cur.fetchall()
                 if len(datos) < 2:
-                    raise RuntimeError("Se necesitan al menos 2 dias de datos del NASDAQ.")
+                    raise RuntimeError("Se necesitan al menos 2 dias bursatiles desde la fecha de inversion.")
 
                 filas, valor, anterior = [], capital, None
                 for fecha, cierre in datos:
@@ -57,7 +62,6 @@ def calcular_portafolio(verbose=False):
     if verbose:
         print(f"Portafolio calculado para {len(filas)} dias (capital ${capital:,.2f})")
     return {"dias_calculados": len(filas), "ultima_fecha": str(filas[-1][0]), "capital": capital}
-
 
 if __name__ == "__main__":
     try:

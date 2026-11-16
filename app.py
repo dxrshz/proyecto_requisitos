@@ -4,6 +4,8 @@ from db import conectar
 from alertas import obtener_alertas
 from recomendaciones import obtener_recomendacion
 from actualizar import ejecutar_pipeline
+from datetime import date
+from calculo import calcular_portafolio
 
 ### ═══════════════════════════════════════════════════════════
 ### CONFIGURACIÓN DE PÁGINA
@@ -90,7 +92,6 @@ st.markdown(tema_css, unsafe_allow_html=True)
 conn = conectar()
 cursor = conn.cursor()
 
-
 # ═══════════════════════════════════════════════════════════
 # ENCABEZADO PRINCIPAL
 # ═══════════════════════════════════════════════════════════
@@ -104,18 +105,22 @@ with col_title:
     st.caption("Panel de Control · Sprint 3 · Seguimiento del portafolio basado en el NASDAQ")
 
 st.divider()
-
-
 # ═══════════════════════════════════════════════════════════
 # SIDEBAR: CONFIGURACIÓN
 # ═══════════════════════════════════════════════════════════
 with st.sidebar:
     st.header("⚙️ Configuración")
     st.caption("Ajusta los parámetros del portafolio")
+    
+    # --- AQUÍ VA EL BLOQUE NUEVO ---
+    cursor.execute("SELECT MIN(fecha), MAX(fecha) FROM historico_nasdaq")
+    rango_fechas = cursor.fetchone()
+    min_fecha = rango_fechas[0] if rango_fechas and rango_fechas[0] else date.today()
+    max_fecha = rango_fechas[1] if rango_fechas and rango_fechas[1] else date.today()
 
     cursor.execute("""
         SELECT id, capital_inicial, moneda, 
-               umbral_alerta_perdida, umbral_alerta_ganancia 
+               umbral_alerta_perdida, umbral_alerta_ganancia, fecha_inicio
         FROM configuracion 
         ORDER BY id LIMIT 1
     """)
@@ -128,12 +133,15 @@ with st.sidebar:
         moneda_actual = 'USD'
         umbral_perdida_actual = -5.0
         umbral_ganancia_actual = 10.0
+        fecha_inicio_actual = min_fecha
     else:
         config_id = config[0]
         capital_actual = float(config[1])
         moneda_actual = config[2]
         umbral_perdida_actual = float(config[3]) if config[3] is not None else -5.0
         umbral_ganancia_actual = float(config[4]) if config[4] is not None else 10.0
+        fecha_inicio_actual = config[5] if config[5] is not None else min_fecha
+    # --- FIN DEL BLOQUE NUEVO ---
 
     with st.form("form_config"):
         capital = st.number_input(
@@ -149,7 +157,12 @@ with st.sidebar:
             options=['USD', 'COP', 'EUR'],
             index=['USD', 'COP', 'EUR'].index(moneda_actual)
         )
-
+        fecha_inversion = st.date_input(
+            "📅 Fecha de inversión:",
+            value=max(min_fecha, min(fecha_inicio_actual, max_fecha)),
+            min_value=min_fecha,
+            max_value=max_fecha
+        )
         st.markdown("**🚨 Umbrales de alerta**")
         umbral_perdida = st.number_input(
             "Pérdida (%):",
@@ -168,23 +181,27 @@ with st.sidebar:
         if config_id is None:
             cursor.execute("""
                 INSERT INTO configuracion 
-                    (capital_inicial, moneda, umbral_alerta_perdida, umbral_alerta_ganancia)
-                VALUES (%s, %s, %s, %s)
-            """, (capital, moneda, umbral_perdida, umbral_ganancia))
-            st.success("✅ Configuración inicial creada")
+                    (capital_inicial, moneda, umbral_alerta_perdida, umbral_alerta_ganancia, fecha_inicio)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (capital, moneda, umbral_perdida, umbral_ganancia, fecha_inversion))
         else:
             cursor.execute("""
                 UPDATE configuracion 
                 SET capital_inicial = %s, moneda = %s,
                     umbral_alerta_perdida = %s, umbral_alerta_ganancia = %s,
+                    fecha_inicio = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-            """, (capital, moneda, umbral_perdida, umbral_ganancia, config_id))
-            st.success("✅ Configuración actualizada")
+            """, (capital, moneda, umbral_perdida, umbral_ganancia, fecha_inversion, config_id))
 
         conn.commit()
+        try:
+            calcular_portafolio()
+        except Exception as e:
+            st.error(f"Error al recalcular: {e}")
         st.session_state.pop("ultima_alerta_toast", None)
         st.rerun()
+
 # ═══════════════════════════════════════════════════════════
 # BOTÓN: ACTUALIZAR DATOS CON UN CLIC
 # ═══════════════════════════════════════════════════════════
