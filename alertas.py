@@ -23,21 +23,28 @@ def evaluar_alertas(variacion_dia, rentabilidad, umbral_perdida, umbral_ganancia
     - umbral_ganancia: numero positivo, por ejemplo 10  (alerta si sube a +10% o mas).
     """
     medidas = [
-        ("Variación del último día", variacion_dia),
-        ("Rentabilidad acumulada", rentabilidad),
+        ("Variación del último día", "daily_change", variacion_dia),
+        ("Rentabilidad acumulada", "cumulative_return", rentabilidad),
     ]
 
     alertas = []
-    for nombre, valor in medidas:
+    for nombre, medida_id, valor in medidas:
         if valor < 0 and valor <= umbral_perdida:
             alertas.append({
                 "tipo": "perdida",
                 "mensaje": f"{nombre}: {valor:+.2f}% (llegó al umbral de pérdida de {umbral_perdida:.2f}%)",
+                # Metadatos para que la interfaz traduzca el mensaje sin tocar el cálculo.
+                "medida_id": medida_id,
+                "valor": valor,
+                "umbral": umbral_perdida,
             })
         elif valor > 0 and valor >= umbral_ganancia:
             alertas.append({
                 "tipo": "ganancia",
                 "mensaje": f"{nombre}: {valor:+.2f}% (llegó al umbral de ganancia de {umbral_ganancia:.2f}%)",
+                "medida_id": medida_id,
+                "valor": valor,
+                "umbral": umbral_ganancia,
             })
     return alertas
 
