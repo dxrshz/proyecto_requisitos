@@ -135,11 +135,19 @@ div[data-testid="stForm"] {background:rgba(255,255,255,.85);border-color:#bfd7e8
 div[data-testid="stForm"] label {color:#173f60!important;}
 div[data-testid="stTextInput"] input {background:#fff!important;color:#193c56!important;border-color:#b7d3e5!important;}
 div[data-testid="stTextInput"] input:focus {border-color:#1498ba!important;box-shadow:0 0 0 1px #16a5cf44!important;}
+[data-testid="stTextInput"] input::placeholder {color: #64748B !important;-webkit-text-fill-color: #64748B !important;opacity: 1 !important;}
 button[kind="secondary"] {background:#f3fafd!important;color:#17506e!important;border-color:#b2d9e6!important;}
 button[kind="secondary"]:hover {color:#053652!important;border-color:#1d91ae!important;}
 [data-testid="stRadio"] label,[data-testid="stToggle"] label {color:#173f60!important;}
 [data-baseweb="select"] > div {background:#fff!important; color:#123d5c!important; border:1px solid #b7d3e5!important;}
 [data-testid="stCaptionContainer"] p {color:#45627b!important;}
+[data-testid="stCheckbox"] label p,
+[data-testid="stCheckbox"] label span,
+[data-testid="stWidgetLabel"] p {color: #1F2328 !important;font-weight: 500;}
+[data-testid="stCheckbox"] label > div:first-of-type{background-color: #94A3B8 !important;border: 1.5px solid #475569 !important;opacity: 1 !important;}
+[data-testid="stCheckbox"] label > div:first-of-type > div{background-color: #FFFFFF !important;box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;}
+[data-testid="stAlert"],[data-testid="stAlert"] p,[data-testid="stAlert"] span,[data-testid="stAlert"] div {color: #1F2328 !important;font-weight: 500 !important;opacity: 1 !important;}
+[data-testid="stAlert"] [data-baseweb="notification"][kind="negative"] {background-color: #FEE2E2 !important;border: 1px solid #EF4444 !important;}
 </style>
 """
 
@@ -321,10 +329,9 @@ def requerir_acceso():
             "Idioma / Language", options=["es", "en"],
             format_func=lambda codigo: "🇪🇸 Español" if codigo == "es" else "🇺🇸 English",
             label_visibility="collapsed", key="idioma", on_change=guardar_preferencias,
-            index=0 if st.session_state.get("ritech_pref_idioma", "es") == "es" else 1,
-        )
+            )
     with c_tema:
-        st.toggle(_tr("dark_mode"), value=st.session_state.get("ritech_pref_tema", True),
+        st.toggle(_tr("dark_mode"),
                   key="tema_oscuro", on_change=guardar_preferencias)
 
     try:

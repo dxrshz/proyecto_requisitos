@@ -105,8 +105,8 @@ if modo_oscuro:
 else:
     tema_css = """
     <style>
-        .stApp, [data-testid="stHeader"] { background-color: #FFFFFF; color: #1F2328; }
-        [data-testid="stSidebar"] { background-color: #F6F8FA; }
+        .stApp, [data-testid="stHeader"] { background-color: #f0f4f7; color: #1F2328; }
+        [data-testid="stSidebar"] { background-color: #dfe2e6; }
         .stApp p, .stApp span, .stApp label, .stApp li,
         [data-testid="stCaptionContainer"],
         [data-testid="stMarkdownContainer"] p,
