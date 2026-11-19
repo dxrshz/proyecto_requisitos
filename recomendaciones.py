@@ -12,7 +12,7 @@ def _rsi(cierres, periodo=14):
     return 100 - 100 / (1 + rs)
 
 
-def obtener_recomendacion(cursor):
+def obtener_recomendacion(cursor, usuario_id):
     # Histórico de cierres
     cursor.execute("""
         SELECT fecha, valor_cierre FROM historico_nasdaq ORDER BY fecha ASC
@@ -28,13 +28,13 @@ def obtener_recomendacion(cursor):
 
     # Rentabilidad del portafolio y umbrales
     cursor.execute("""
-        SELECT valor_portafolio FROM portafolio_diario ORDER BY fecha ASC
-    """)
+        SELECT valor_portafolio FROM portafolio_diario WHERE usuario_id = %s ORDER BY fecha ASC
+    """, (usuario_id,))
     vp = [float(f[0]) for f in cursor.fetchall()]
     cursor.execute("""
         SELECT umbral_alerta_perdida, umbral_alerta_ganancia
-        FROM configuracion ORDER BY id LIMIT 1
-    """)
+        FROM configuracion WHERE usuario_id = %s ORDER BY id LIMIT 1
+    """, (usuario_id,))
     u = cursor.fetchone()
     if u is None or not vp:
         return None

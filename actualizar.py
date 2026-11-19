@@ -67,26 +67,54 @@ def guardar_datos_nasdaq(dias=DIAS_HISTORICO):
     return len(filas)
 
 
-def ejecutar_pipeline(dias=DIAS_HISTORICO, verbose=False):
-    """Descarga datos -> guarda en BD -> recalcula portafolio.
-    Lanza una excepcion con mensaje claro si algun paso falla."""
-    log = print if verbose else (lambda *a, **k: None)
+def ejecutar_pipeline(usuario_id, dias=DIAS_HISTORICO, verbose=False):
+    """Actualiza NASDAQ (común), y recalcula únicamente la cuenta autenticada."""
+    if not isinstance(usuario_id, int) or isinstance(usuario_id, bool) or usuario_id <= 0:
+        raise ValueError("Debes iniciar sesión para actualizar tu portafolio.")
+    log = print if verbose else (lambda *args, **kwargs: None)
 
-    log("[1/2] Descargando NASDAQ y guardando en la base de datos...")
+    # Comprobación de identidad antes de descargar o escribir datos.
+    conn = conectar()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM ritech_usuarios WHERE id = %s", (usuario_id,))
+            if cur.fetchone() is None:
+                raise ValueError("La cuenta no existe.")
+    finally:
+        conn.close()
+
+    log("[1/2] Descargando NASDAQ y guardando datos del mercado...")
     n_datos = guardar_datos_nasdaq(dias)
-    log(f"      {n_datos} dias procesados en historico_nasdaq")
+    log(f"      {n_datos} días guardados en historico_nasdaq")
 
-    log("[2/2] Recalculando portafolio...")
-    resultado = calcular_portafolio()
-    log(f"      {resultado['dias_calculados']} dias calculados en portafolio_diario")
+    # La primera vez aún no hay capital configurado: no se crea uno global.
+    conn = conectar()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM configuracion WHERE usuario_id = %s", (usuario_id,))
+            configurado = cur.fetchone() is not None
+            cur.execute("SELECT MAX(fecha) FROM historico_nasdaq")
+            fecha_mercado = cur.fetchone()[0]
+    finally:
+        conn.close()
+    if not configurado:
+        log("[2/2] Configura tu capital personal para activar el cálculo.")
+        return {"dias_descargados": n_datos, "dias_calculados": 0,
+                "ultima_fecha": str(fecha_mercado) if fecha_mercado else "—",
+                "sin_configuracion": True}
 
-    return {"dias_descargados": n_datos, **resultado}
+    log(f"[2/2] Recalculando exclusivamente la cuenta #{usuario_id}...")
+    resultado = calcular_portafolio(usuario_id)
+    return {"dias_descargados": n_datos, **resultado, "sin_configuracion": False}
 
 
 if __name__ == "__main__":
+    # Desde la consola se actualizan únicamente cotizaciones públicas.
+    # Nunca se recalcúla el portafolio privado de otra cuenta sin su sesión.
     try:
-        res = ejecutar_pipeline(verbose=True)
-        print(f"Listo. Ultima fecha: {res['ultima_fecha']}")
-    except Exception as e:
-        print(f"ERROR: {e}")
+        total = guardar_datos_nasdaq()
+        print(f"Datos comunes del NASDAQ actualizados: {total} sesiones.")
+        print("Los portafolios personales se recalculan dentro de RiTech tras iniciar sesión.")
+    except Exception as exc:
+        print(f"ERROR: {exc}")
         sys.exit(1)

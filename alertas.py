@@ -49,7 +49,7 @@ def evaluar_alertas(variacion_dia, rentabilidad, umbral_perdida, umbral_ganancia
     return alertas
 
 
-def obtener_alertas(cursor):
+def obtener_alertas(cursor, usuario_id):
     """
     Lee de la base de datos los umbrales y el ultimo dia del portafolio,
     y retorna un diccionario con las medidas y las alertas activas.
@@ -58,15 +58,15 @@ def obtener_alertas(cursor):
     cursor.execute("""
         SELECT umbral_alerta_perdida, umbral_alerta_ganancia
         FROM configuracion
-        ORDER BY id LIMIT 1
-    """)
+        WHERE usuario_id = %s ORDER BY id LIMIT 1
+    """, (usuario_id,))
     umbrales = cursor.fetchone()
 
     cursor.execute("""
         SELECT fecha, variacion_portafolio, valor_portafolio, ganancia_perdida
         FROM portafolio_diario
-        ORDER BY fecha DESC LIMIT 1
-    """)
+        WHERE usuario_id = %s ORDER BY fecha DESC LIMIT 1
+    """, (usuario_id,))
     ultimo = cursor.fetchone()
 
     if umbrales is None or ultimo is None:

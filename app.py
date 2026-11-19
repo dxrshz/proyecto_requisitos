@@ -11,6 +11,7 @@ from alertas import obtener_alertas
 from calculo import calcular_portafolio
 from db import conectar
 from idiomas import traducir
+from acceso import requerir_acceso, cerrar_sesion, guardar_preferencias
 from recomendaciones import obtener_recomendacion
 
 
@@ -24,8 +25,26 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Control de acceso antes de crear el sidebar o ejecutar consultas financieras.
+requerir_acceso()
+# Todas las operaciones privadas exigen este identificador de la sesión validada.
+usuario_id = st.session_state["ritech_usuario_id"]
+
+# Conservamos el arranque original: actualización NASDAQ una sola vez por sesión,
+# pero únicamente DESPUÉS de autenticar. Si falla, el panel sigue funcionando.
+if not st.session_state.get("ritech_auto_actualizado"):
+    with st.spinner(traducir("update_spinner", st.session_state.get("idioma", "es"))):
+        try:
+            resumen = ejecutar_pipeline(usuario_id)
+            st.session_state["msg_update"] = ("ok", resumen)
+        except Exception as exc:
+            st.session_state["msg_update"] = ("error", str(exc))
+    st.session_state["ritech_auto_actualizado"] = True
+
 if "idioma" not in st.session_state:
-    st.session_state["idioma"] = "es"
+    st.session_state["idioma"] = st.session_state.get("ritech_pref_idioma", "es")
+if "tema_oscuro" not in st.session_state:
+    st.session_state["tema_oscuro"] = st.session_state.get("ritech_pref_tema", True)
 
 with st.sidebar:
     st.markdown("### 🌐 Idioma / Language")
@@ -34,6 +53,8 @@ with st.sidebar:
         options=["es", "en"],
         format_func=lambda codigo: "🇪🇸 Español" if codigo == "es" else "🇺🇸 English",
         key="idioma",
+        index=0 if st.session_state.get("ritech_pref_idioma", "es") == "es" else 1,
+        on_change=guardar_preferencias,
         label_visibility="collapsed",
     )
 
@@ -49,8 +70,15 @@ with st.sidebar:
     st.caption(tr("language_hint"))
     st.divider()
     st.header(tr("settings"))
-    modo_oscuro = st.toggle(tr("dark_mode"), value=True, key="tema_oscuro")
+    modo_oscuro = st.toggle(
+        tr("dark_mode"), value=st.session_state.get("ritech_pref_tema", True),
+        key="tema_oscuro", on_change=guardar_preferencias
+    )
     st.caption(tr("sidebar_caption"))
+    st.divider()
+    st.caption(tr("auth_signed_in_as", user=st.session_state.get("ritech_usuario", "")))
+    if st.button(tr("auth_logout"), key="ritech_logout", use_container_width=True):
+        cerrar_sesion()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -113,9 +141,9 @@ except (RuntimeError, Exception) as exc:
     st.stop()
 
 try:
-    cursor.execute("SELECT 1 FROM configuracion LIMIT 1")
+    cursor.execute("SELECT 1 FROM configuracion WHERE usuario_id = %s LIMIT 1", (usuario_id,))
     cursor.execute("SELECT 1 FROM historico_nasdaq LIMIT 1")
-    cursor.execute("SELECT 1 FROM portafolio_diario LIMIT 1")
+    cursor.execute("SELECT 1 FROM portafolio_diario WHERE usuario_id = %s LIMIT 1", (usuario_id,))
 except Exception:
     st.error(tr("schema_missing"))
     cursor.close()
@@ -145,12 +173,12 @@ with st.sidebar:
     cursor.execute("""
         SELECT id, capital_inicial, moneda,
                umbral_alerta_perdida, umbral_alerta_ganancia, fecha_inicio
-        FROM configuracion ORDER BY id LIMIT 1
-    """)
+        FROM configuracion WHERE usuario_id = %s ORDER BY id LIMIT 1
+    """, (usuario_id,))
     config = cursor.fetchone()
 
     if config is None:
-        st.info(tr("first_time"))
+        st.info(tr("personal_setup_needed"))
         config_id = None
         capital_actual = 10000.0
         moneda_actual = "USD"
@@ -192,24 +220,25 @@ with st.sidebar:
         guardar = st.form_submit_button(tr("save_settings"), use_container_width=True)
 
     if guardar:
-        if config_id is None:
-            cursor.execute("""
-                INSERT INTO configuracion
-                    (capital_inicial, moneda, umbral_alerta_perdida, umbral_alerta_ganancia, fecha_inicio)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (capital, moneda, umbral_perdida, umbral_ganancia, fecha_inversion))
-        else:
-            cursor.execute("""
-                UPDATE configuracion
-                SET capital_inicial = %s, moneda = %s,
-                    umbral_alerta_perdida = %s, umbral_alerta_ganancia = %s,
-                    fecha_inicio = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (capital, moneda, umbral_perdida, umbral_ganancia, fecha_inversion, config_id))
+        # Una sola configuración por dueño, incluso con dos pestañas abiertas.
+        # Nunca se actualizan las configuraciones históricas sin dueño.
+        cursor.execute("""
+            INSERT INTO configuracion
+                (usuario_id, capital_inicial, moneda,
+                 umbral_alerta_perdida, umbral_alerta_ganancia, fecha_inicio)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (usuario_id) WHERE usuario_id IS NOT NULL
+            DO UPDATE SET capital_inicial = EXCLUDED.capital_inicial,
+                          moneda = EXCLUDED.moneda,
+                          umbral_alerta_perdida = EXCLUDED.umbral_alerta_perdida,
+                          umbral_alerta_ganancia = EXCLUDED.umbral_alerta_ganancia,
+                          fecha_inicio = EXCLUDED.fecha_inicio,
+                          updated_at = CURRENT_TIMESTAMP
+        """, (usuario_id, capital, moneda, umbral_perdida, umbral_ganancia, fecha_inversion))
 
         conn.commit()
         try:
-            calcular_portafolio()
+            calcular_portafolio(usuario_id)
         except Exception as e:
             st.error(tr("recalculate_error", error=str(e)))
         st.session_state.pop("ultima_alerta_toast", None)
@@ -223,7 +252,7 @@ with st.sidebar:
     if st.button(tr("update_now"), type="primary", use_container_width=True, key="actualizar_datos"):
         with st.spinner(tr("update_spinner")):
             try:
-                res = ejecutar_pipeline()
+                res = ejecutar_pipeline(usuario_id)
                 # Se guardan los DATOS, no un mensaje ya traducido.
                 st.session_state["msg_update"] = ("ok", res)
             except Exception as e:
@@ -234,7 +263,10 @@ with st.sidebar:
     if "msg_update" in st.session_state:
         tipo, resultado = st.session_state.pop("msg_update")
         if tipo == "ok":
-            st.success(tr("update_success", date=resultado["ultima_fecha"], days=resultado["dias_calculados"]))
+            if resultado.get("sin_configuracion"):
+                st.info(tr("personal_setup_needed"))
+            else:
+                st.success(tr("update_success", date=resultado["ultima_fecha"], days=resultado["dias_calculados"]))
         else:
             st.error(tr("update_error", error=resultado))
 
@@ -246,12 +278,13 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════
 
 st.subheader(tr("portfolio_summary"))
+st.caption(tr("personal_space", user=st.session_state["ritech_usuario"]))
 
 cursor.execute("""
     SELECT fecha, valor_nasdaq, variacion_nasdaq,
            valor_portafolio, variacion_portafolio, ganancia_perdida
-    FROM portafolio_diario ORDER BY fecha DESC LIMIT 1
-""")
+    FROM portafolio_diario WHERE usuario_id = %s ORDER BY fecha DESC LIMIT 1
+""", (usuario_id,))
 ultimo_dia = cursor.fetchone()
 
 if ultimo_dia:
@@ -279,8 +312,8 @@ st.divider()
 st.subheader(tr("historical_evolution"))
 cursor.execute("""
     SELECT fecha, valor_nasdaq, valor_portafolio
-    FROM portafolio_diario ORDER BY fecha ASC
-""")
+    FROM portafolio_diario WHERE usuario_id = %s ORDER BY fecha ASC
+""", (usuario_id,))
 datos_evol = cursor.fetchall()
 
 if datos_evol:
@@ -318,7 +351,7 @@ if st.button(tr("review_alerts"), type="primary", key="revisar_alertas"):
     st.session_state["mostrar_alertas"] = True
 
 if st.session_state.get("mostrar_alertas", False):
-    info = obtener_alertas(cursor)
+    info = obtener_alertas(cursor, usuario_id)
     if info is None:
         st.warning(tr("no_portfolio_for_alerts"))
     else:
@@ -349,7 +382,7 @@ st.divider()
 # RECOMENDACIONES DE INVERSIÓN Y SIMULADOR
 # ═══════════════════════════════════════════════════════════
 st.header(tr("recommendations_title"))
-rec = obtener_recomendacion(cursor)
+rec = obtener_recomendacion(cursor, usuario_id)
 
 if rec is None:
     st.warning(tr("insufficient_history"))
@@ -441,8 +474,8 @@ with tab_port:
     cursor.execute("""
         SELECT fecha, valor_nasdaq, variacion_nasdaq,
                valor_portafolio, variacion_portafolio, ganancia_perdida
-        FROM portafolio_diario ORDER BY fecha DESC LIMIT 15
-    """)
+        FROM portafolio_diario WHERE usuario_id = %s ORDER BY fecha DESC LIMIT 15
+    """, (usuario_id,))
     datos_port = cursor.fetchall()
     if datos_port:
         df_port = pd.DataFrame(datos_port, columns=[

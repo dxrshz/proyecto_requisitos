@@ -2,9 +2,9 @@
 iniciar.py  -  ARRANQUE CON UN SOLO CLIC
 ----------------------------------------
     (opcional) git pull   -> trae la ultima version del codigo   [--pull]
-    1. Actualiza la base de datos (descarga NASDAQ)
-    2. Recalcula el portafolio
-    3. Abre la pagina web (Streamlit)
+    1. Abre login RiTech (Streamlit)
+    2. El usuario se autentica y entra al simulador
+    3. El panel actualiza NASDAQ una vez después del login (o manualmente)
 
 Si la actualizacion falla (sin internet, BD apagada, sin configuracion...)
 igual abre la app con los datos que ya existan, y avisa del problema.
@@ -43,15 +43,7 @@ def main():
     if "--pull" in sys.argv:
         actualizar_codigo()
 
-    try:
-        from actualizar import ejecutar_pipeline
-        ejecutar_pipeline(verbose=True)
-        print("\nDatos al dia.")
-    except Exception as e:
-        print(f"\nAVISO: no se pudo actualizar ({e})")
-        print("Se abrira la app con los datos existentes.")
-
-    print("\n[3] Abriendo la pagina web...")
+    print("[1] Abriendo RiTech: login / sign in...")
     asegurar_credenciales_streamlit()
     subprocess.run([sys.executable, "-m", "streamlit", "run", "app.py"])
 
